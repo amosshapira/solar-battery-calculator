@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import csv
 import datetime
 import requests
 import sys
@@ -41,35 +42,44 @@ def monthly_it(start_date, end_date):
     start_date += datetime.timedelta(weeks=4)
     yield start_date
 
-def getSiteData(site, key, start_date, end_date):
+def getSiteData(site, key, start_date, end_date, outfile):
+  csvwriter = csv.writer(outfile, quoting=csv.QUOTE_MINIMAL)
   for month in monthly_it(start_date, end_date):
     next_month = month + datetime.timedelta(weeks=4)
     if next_month > end_date:
       next_month = end_date
     powerDetails = getSitePowerDetails(site, key, month, next_month)['powerDetails']['meters']
+    # this is the first row - print the headers
     if month == start_date:
+      headers=['Time']
       for meter in powerDetails:
-        print(meter['type'], end=',')
-      print()
+        headers.append(meter['type'])
+      csvwriter.writerow(headers)
 
     for index in range (len(powerDetails[0]['values'])):
-      print(powerDetails[0]['values'][index]['date'], end=' ')
+      row=[]
+      row.append(powerDetails[0]['values'][index]['date'])
       for meter in powerDetails:
-        print(meter['values'][index].get('value', 0) * 25/1000, end=',')
-      print()
+        row.append(meter['values'][index].get('value', 0) * 25/1000)
+      csvwriter.writerow(row)
 
 def parseCommandLine():
   parser = argparse.ArgumentParser(description='Pull SolarEdge data into CSV')
   parser.add_argument('--site', type=int, help='Site id (integer)')
   parser.add_argument('--key', type=str, help='Access key (string of 32 digits and uppser case letters)')
+  parser.add_argument('--out', type=str, help='Name of output CSV file')
   return parser.parse_args()
 
 def main():
   args = parseCommandLine()
   if not args.site or not args.key:
     sys.exit('Error: both --site and --key are required')
+  if args.out:
+    outfile = open(args.out, 'w', newline='')
+  else:
+    outfile = sys.stdout
   start_date, end_date = getSiteDates(args.site, args.key)
   end_date += datetime.timedelta(days=1)
-  getSiteData(args.site, args.key, start_date, end_date)
+  getSiteData(args.site, args.key, start_date, end_date, outfile)
 
 main()
