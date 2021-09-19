@@ -17,6 +17,9 @@ def getSiteDates(site, key):
     params=dict(
       api_key=key,
     ))
+  if resp.status_code != 200:
+    sys.exit(f'Failed to get site date: {resp.text}')
+
   data = resp.json()
 
   start_date=data['dataPeriod']['startDate']
