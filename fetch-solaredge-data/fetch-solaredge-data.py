@@ -9,6 +9,35 @@ import time
 
 url_base='https://monitoringapi.solaredge.com'
 
+# Mapping of the API results headers to GUI results headers, by order from left
+# to right:
+# API -> GUI
+# 0: Consumption -> Consumption
+# 1: FeedIn -> Export
+# 2: Purchage -> Import
+# 3: SelfConsumption -> Self Consumption
+# 4: Production -> System Production
+# The order of the API headers changes in every call and has to be re-mapped
+
+ColumnHeaderMap = {
+  'Consumption': 0,
+  'FeedIn': 1,
+  'Purchased': 2,
+  'SelfConsumption': 3,
+  'Production': 4,
+}
+
+# Generates an ordered list. The place of the list member is the order
+# we want (Consumption, Export, Import, Self Consumption, System Production)
+# the value of the members is the index of that column as was returned by
+# the API in powerDetails
+def mapColumns(powerDetails):
+  columnMap = [None] * len(ColumnHeaderMap)
+  for place, column in enumerate(powerDetails):
+    type = column['type']
+    columnMap[ColumnHeaderMap[type]] = place
+  return columnMap
+
 def _string_to_datetime(date):
   return datetime.datetime.fromtimestamp(time.mktime(time.strptime(date, '%Y-%m-%d')))
 
@@ -35,7 +64,7 @@ def getSitePowerDetails(site, key, start_date, end_date):
       unit='kw',
       startTime=datetime.date.strftime(start_date, '%Y-%m-%d 00:00:00'),
       endTime=datetime.date.strftime(end_date, '%Y-%m-%d 00:00:00'),
-      meters='PRODUCTION,CONSUMPTION,SELFCONSUMPTION,FEEDIN,PURCHASED',
+      meters='CONSUMPTION,FEEDIN,PURCHASED,SELFCONSUMPTION,PRODUCTION',
     ))
   return resp.json()
 
@@ -52,18 +81,20 @@ def getSiteData(site, key, start_date, end_date, outfile):
     if next_month > end_date:
       next_month = end_date
     powerDetails = getSitePowerDetails(site, key, month, next_month)['powerDetails']['meters']
+    columnMap = mapColumns(powerDetails)
     # this is the first row - print the headers
     if month == start_date:
       headers=['Time']
-      for meter in powerDetails:
-        headers.append(meter['type'])
+      for column in columnMap:
+        headers.append(powerDetails[column]['type'])
       csvwriter.writerow(headers)
 
     for index in range (len(powerDetails[0]['values'])):
       row=[]
-      row.append(powerDetails[0]['values'][index]['date'])
-      for meter in powerDetails:
-        row.append(meter['values'][index].get('value', 0) * 25/1000)
+      timeStamp = time.strftime('%d/%m/%Y %H:%M', time.strptime(powerDetails[0]['values'][index]['date'], '%Y-%m-%d %H:%M:%S'))
+      row.append(timeStamp)
+      for column in columnMap:
+        row.append(str(round(powerDetails[column]['values'][index].get('value', 0), 4)).rstrip('.0') or '0')
       csvwriter.writerow(row)
 
 def parseCommandLine():
